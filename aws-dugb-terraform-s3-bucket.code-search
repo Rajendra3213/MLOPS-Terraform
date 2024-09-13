@@ -1,0 +1,15 @@
+# Query: aws-dugb-terraform-s3-bucket
+# ContextLines: 1
+
+2 results - 2 files
+
+aws-dugb-sagemaker-tfsetup/main.tf:
+  1  resource "aws_s3_bucket" "terraform_state" {
+  2:   bucket = "awscloudclub-terraform-s3-bucket"
+  3   
+
+aws-dugb-sagemaker-tfsetup/.terraform/terraform.tfstate:
+  16        "assume_role_with_web_identity": null,
+  17:       "bucket": "
+awscloudclub-terraform-s3-bucket",
+  18        "custom_ca_bundle": null,
