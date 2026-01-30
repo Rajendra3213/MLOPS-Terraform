@@ -1,34 +1,85 @@
-resource "aws_s3_bucket" "terraform_state" {
-  bucket = "awscloudclub-dugb-terraform-s3-bucket"
-  # Remove or set `force_destroy` to false
-}
-
-resource "aws_s3_bucket_versioning" "enabled" {
-  bucket = aws_s3_bucket.terraform_state.id
-  versioning_configuration {
-    status = "Enabled"
-  }
-}
-
-resource "aws_s3_bucket_server_side_encryption_configuration" "default" {
-  bucket = aws_s3_bucket.terraform_state.id
-
-  rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+locals {
+  common_tags = merge(
+    var.tags,
+    {
+      Environment = var.environment
+      Project     = var.project_name
+      ManagedBy   = "Terraform"
     }
-  }
+  )
 }
 
-resource "aws_s3_bucket_public_access_block" "public_access" {
-  bucket                  = aws_s3_bucket.terraform_state.id
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
+module "vpc" {
+  source       = "./modules/vpc"
+  environment  = var.environment
+  project_name = var.project_name
+  vpc_cidr     = var.vpc_cidr
+  tags         = local.common_tags
 }
 
-resource "aws_dynamodb_table" "terraform_locks" {
-  name         = "terraform-up-and-running-locks"
-  billing_mode = "PAY_PER_REQUEST"
+module "iam" {
+  source       = "./modules/iam"
+  environment  = var.environment
+  project_name = var.project_name
+  tags         = local.common_tags
+}
+
+module "s3" {
+  source       = "./modules/s3"
+  environment  = var.environment
+  project_name = var.project_name
+  tags         = local.common_tags
+}
+
+module "ecr" {
+  source       = "./modules/ecr"
+  environment  = var.environment
+  project_name = var.project_name
+  tags         = local.common_tags
+}
+
+module "sagemaker" {
+  source              = "./modules/sagemaker"
+  environment         = var.environment
+  project_name        = var.project_name
+  vpc_id              = module.vpc.vpc_id
+  subnet_ids          = module.vpc.private_subnet_ids
+  security_group_ids  = [module.vpc.sagemaker_sg_id]
+  execution_role_arn  = module.iam.sagemaker_execution_role_arn
+  tags                = local.common_tags
+}
+
+module "glue" {
+  source       = "./modules/glue"
+  environment  = var.environment
+  project_name = var.project_name
+  role_arn     = module.iam.glue_role_arn
+  data_bucket  = module.s3.data_bucket_name
+  tags         = local.common_tags
+}
+
+module "stepfunctions" {
+  source       = "./modules/stepfunctions"
+  environment  = var.environment
+  project_name = var.project_name
+  role_arn     = module.iam.stepfunctions_role_arn
+  tags         = local.common_tags
+}
+
+module "lambda" {
+  source             = "./modules/lambda"
+  environment        = var.environment
+  project_name       = var.project_name
+  role_arn           = module.iam.lambda_role_arn
+  subnet_ids         = module.vpc.private_subnet_ids
+  security_group_ids = [module.vpc.lambda_sg_id]
+  tags               = local.common_tags
+}
+
+module "monitoring" {
+  source              = "./modules/monitoring"
+  environment         = var.environment
+  project_name        = var.project_name
+  sagemaker_domain_id = module.sagemaker.domain_id
+  tags                = local.common_tags
 }
